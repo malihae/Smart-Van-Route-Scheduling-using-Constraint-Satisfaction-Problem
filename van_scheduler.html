@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dispatch — Smart Van & Route Scheduling (CSP)</title>
+<style>
+  :root{
+    --bg:#0e1420; --panel:#141b2b; --panel2:#0b101a; --line:#26314a;
+    --text:#dfe6f0; --dim:#7c8aa5; --amber:#f2a33e; --amber-dim:#8a5f1f;
+    --green:#3ecf8e; --red:#e2586b; --mono:'Roboto Mono','Consolas',monospace;
+    --sans:'Inter','Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  .board{max-width:1180px;margin:0 auto;padding:28px 20px 60px;}
+  header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:24px;}
+  header .tag{font-family:var(--mono);color:var(--amber);font-size:12px;letter-spacing:.14em;text-transform:uppercase;}
+  h1{font-family:var(--mono);font-size:26px;margin:4px 0 0;font-weight:700;}
+  h1 span{color:var(--amber);}
+  .sub{color:var(--dim);font-size:13px;margin-top:6px;max-width:520px;}
+  .grid{display:grid;grid-template-columns:1.1fr 1.4fr;gap:20px;}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px 18px 20px;}
+  .panel h2{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin:0 0 14px;display:flex;justify-content:space-between;align-items:center;}
+  .panel h2 b{color:var(--text);font-weight:700;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-family:var(--mono);}
+  th,td{padding:6px 6px;border-bottom:1px solid var(--line);text-align:left;}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;}
+  input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:4px 6px;border-radius:3px;font-family:var(--mono);font-size:12px;}
+  .rowbtn{background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;}
+  .addbtn{margin-top:8px;background:none;border:1px dashed var(--line);color:var(--dim);padding:6px 10px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:12px;}
+  .addbtn:hover{color:var(--amber);border-color:var(--amber-dim);}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0;}
+  .toggle{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--dim);background:var(--panel2);border:1px solid var(--line);padding:6px 10px;border-radius:4px;}
+  .toggle input{width:auto;}
+  .run{background:var(--amber);color:#1a1206;border:none;font-family:var(--mono);font-weight:700;font-size:13px;padding:10px 18px;border-radius:4px;cursor:pointer;letter-spacing:.03em;}
+  .run:hover{background:#ffb454;}
+  .run.secondary{background:none;border:1px solid var(--line);color:var(--text);}
+  .run.secondary:hover{border-color:var(--amber-dim);color:var(--amber);}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+  .stat{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:8px 14px;margin:4px 8px 4px 0;font-family:var(--mono);}
+  .stat .n{font-size:20px;font-weight:700;color:var(--green);}
+  .stat.bad .n{color:var(--red);}
+  .stat .l{display:block;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;}
+  .schedule-row td{font-family:var(--mono);}
+  .badge{font-size:10px;padding:2px 6px;border-radius:3px;border:1px solid var(--line);color:var(--dim);}
+  .badge.ok{color:var(--green);border-color:#1c4d38;}
+  .badge.viol{color:var(--red);border-color:#5a2530;}
+  .log{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:12px;font-family:var(--mono);font-size:12px;color:var(--dim);white-space:pre-wrap;max-height:220px;overflow-y:auto;margin-top:8px;}
+  .footnote{font-size:11px;color:var(--dim);margin-top:6px;font-family:var(--mono);}
+  .section-gap{margin-top:22px;}
+</style>
+</head>
+<body>
+<div class="board">
+
+<header>
+  <div>
+    <div class="tag">Assignment 4 — CSP Engine</div>
+    <h1>Van &amp; Route <span>Dispatch</span></h1>
+    <div class="sub">Backtracking + MRV + Degree heuristic + LCV + AC-3 + Forward Checking + Min-Conflicts — same logic as <code>csp_solver.py</code>, running live in your browser.</div>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- INPUT PANELS -->
+  <div>
+    <div class="panel">
+      <h2>Vans <b id="vanCount">0</b></h2>
+      <table id="vanTable"><thead><tr><th>ID</th><th>Cap</th><th>Range km</th><th></th></tr></thead><tbody></tbody></table>
+      <button class="addbtn" onclick="addVan()">+ add van</button>
+    </div>
+
+    <div class="panel section-gap">
+      <h2>Drivers <b id="drvCount">0</b></h2>
+      <table id="drvTable"><thead><tr><th>ID</th><th>Max hrs</th><th>From</th><th>To</th><th></th></tr></thead><tbody></tbody></table>
+      <div class="footnote">From/To in minutes after midnight (e.g. 480 = 8:00 AM)</div>
+      <button class="addbtn" onclick="addDriver()">+ add driver</button>
+    </div>
+
+    <div class="panel section-gap">
+      <h2>Routes <b id="rteCount">0</b></h2>
+      <table id="rteTable"><thead><tr><th>ID</th><th>Pax</th><th>Km</th><th>Dur</th><th>Win.start</th><th>Win.end</th><th></th></tr></thead><tbody></tbody></table>
+      <button class="addbtn" onclick="addRoute()">+ add route</button>
+    </div>
+
+    <div class="panel section-gap">
+      <div class="actions">
+        <button class="run" onclick="loadRealDataset()">Load real Lahore fleet dataset</button>
+        <button class="run secondary" onclick="loadSample(6)">Load 6-route sample</button>
+        <button class="run secondary" onclick="loadSample(12)">Load 12-route stress</button>
+      </div>
+      <div class="footnote">Default dataset: a school/office van-pooling fleet across DHA, Gulberg, Model Town, Johar Town, Bahria Town, Askari-10, Wapda Town, Iqbal Town &amp; Valencia — 6 vehicles, 5 drivers, 15 AM/PM routes.</div>
+    </div>
+  </div>
+
+  <!-- SOLVE + OUTPUT -->
+  <div>
+    <div class="panel">
+      <h2>Solve</h2>
+      <div class="controls">
+        <label class="toggle"><input type="checkbox" id="optAC3" checked> AC-3</label>
+        <label class="toggle"><input type="checkbox" id="optFC" checked> Forward checking</label>
+        <label class="toggle"><input type="checkbox" id="optHeur" checked> MRV + Degree + LCV</label>
+      </div>
+      <div class="actions">
+        <button class="run" onclick="runSolve()">Solve with backtracking</button>
+        <button class="run secondary" onclick="runCompare()">Compare: heuristics vs plain</button>
+        <button class="run secondary" onclick="runMinConflicts()">Run min-conflicts</button>
+      </div>
+      <div id="stats"></div>
+    </div>
+
+    <div class="panel section-gap">
+      <h2>Schedule</h2>
+      <table id="outTable"><thead><tr><th>Route</th><th>Van</th><th>Driver</th><th>Start</th><th>Finish</th></tr></thead><tbody></tbody></table>
+      <div id="summary" class="footnote"></div>
+    </div>
+
+    <div class="panel section-gap">
+      <h2>Log</h2>
+      <div class="log" id="log">Load a dataset, then click Solve.</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+/* ============================================================
+   MODEL  (ports model.py)
+   ============================================================ */
+function overlaps(start1,dur1,start2,dur2){
+  const end1=start1+dur1, end2=start2+dur2;
+  return start1<end2 && start2<end1;
+}
+function hhmm(m){
+  let h=Math.floor(m/60), mm=m%60;
+  const period = h<12 ? "AM":"PM";
+  let h12=h%12; if(h12===0) h12=12;
+  return `${String(h12).padStart(2,'0')}:${String(mm).padStart(2,'0')} ${period}`;
+}
+function candidateStartTimes(route){
+  const times=[]; let t=route.window_start;
+  while(t+route.duration_min<=route.window_end){ times.push(t); t+=route.time_step||15; }
+  return times;
+}
+
+/* ============================================================
+   CSP SOLVER  (ports csp_solver.py exactly)
+   ============================================================ */
+class SchedulingCSP{
+  constructor(vans,drivers,routes){
+    this.vans=Object.fromEntries(vans.map(v=>[v.id,v]));
+    this.drivers=Object.fromEntries(drivers.map(d=>[d.id,d]));
+    this.routes=Object.fromEntries(routes.map(r=>[r.id,r]));
+    this.route_ids=routes.map(r=>r.id);
+    this.nodes_expanded=0; this.backtracks=0;
+    this.domains=this._buildInitialDomains();
+  }
+
+  _buildInitialDomains(){
+    const domains={};
+    for(const rid of this.route_ids){
+      const route=this.routes[rid]; const values=[];
+      for(const van of Object.values(this.vans)){
+        if(route.passengers>van.capacity) continue;
+        if(route.distance_km>van.fuel_range_km) continue;
+        for(const driver of Object.values(this.drivers)){
+          for(const t of candidateStartTimes(route)){
+            if(t<driver.available_from || (t+route.duration_min)>driver.available_to) continue;
+            values.push([van.id,driver.id,t]);
+          }
+        }
+      }
+      domains[rid]=values;
+    }
+    return domains;
+  }
+
+  consistentPair(r1,v1,r2,v2){
+    const [van1,drv1,t1]=v1, [van2,drv2,t2]=v2;
+    const dur1=this.routes[r1].duration_min, dur2=this.routes[r2].duration_min;
+    if(van1===van2 && overlaps(t1,dur1,t2,dur2)) return false;
+    if(drv1===drv2 && overlaps(t1,dur1,t2,dur2)) return false;
+    return true;
+  }
+
+  driverHoursOk(assignment, route_id, value){
+    const [,driver_id,]=value;
+    let total_min=this.routes[route_id].duration_min;
+    for(const rid in assignment){
+      if(rid===route_id) continue;
+      if(assignment[rid][1]===driver_id) total_min+=this.routes[rid].duration_min;
+    }
+    return total_min <= this.drivers[driver_id].max_hours_per_day*60;
+  }
+
+  isConsistent(assignment, route_id, value){
+    if(!this.driverHoursOk(assignment, route_id, value)) return false;
+    for(const rid in assignment){
+      if(rid===route_id) continue;
+      if(!this.consistentPair(route_id,value,rid,assignment[rid])) return false;
+    }
+    return true;
+  }
+
+  countViolations(assignment){
+    let violations=0; const rids=Object.keys(assignment);
+    for(let i=0;i<rids.length;i++) for(let j=i+1;j<rids.length;j++){
+      if(!this.consistentPair(rids[i],assignment[rids[i]],rids[j],assignment[rids[j]])) violations++;
+    }
+    for(const rid in assignment){
+      const partial={...assignment}; delete partial[rid];
+      if(!this.driverHoursOk(partial,rid,assignment[rid])) violations++;
+    }
+    return violations;
+  }
+
+  ac3(domains){
+    domains = domains || this.domains;
+    let queue=[];
+    for(const ri of this.route_ids) for(const rj of this.route_ids) if(ri!==rj) queue.push([ri,rj]);
+
+    const revise=(ri,rj)=>{
+      let revised=false; const keep=[];
+      for(const vi of domains[ri]){
+        if(domains[rj].some(vj=>this.consistentPair(ri,vi,rj,vj))) keep.push(vi);
+        else revised=true;
+      }
+      domains[ri]=keep;
+      return revised;
+    };
+
+    while(queue.length){
+      const [ri,rj]=queue.shift();
+      if(revise(ri,rj)){
+        if(domains[ri].length===0) return false;
+        for(const rk of this.route_ids) if(rk!==ri && rk!==rj) queue.push([rk,ri]);
+      }
+    }
+    return true;
+  }
+
+  selectUnassignedVariable(assignment, domains, useHeuristics){
+    const unassigned=this.route_ids.filter(r=>!(r in assignment));
+    if(!useHeuristics) return unassigned[0];
+
+    const minSize=Math.min(...unassigned.map(r=>domains[r].length));
+    const mrvCandidates=unassigned.filter(r=>domains[r].length===minSize);
+    if(mrvCandidates.length===1) return mrvCandidates[0];
+
+    const degree=(rid)=>{
+      const vd=new Set(domains[rid].map(([v,d])=>v+'|'+d));
+      let count=0;
+      for(const other of unassigned){
+        if(other===rid) continue;
+        const ovd=new Set(domains[other].map(([v,d])=>v+'|'+d));
+        for(const x of vd) if(ovd.has(x)){ count++; break; }
+      }
+      return count;
+    };
+    return mrvCandidates.reduce((best,r)=> degree(r)>degree(best)?r:best, mrvCandidates[0]);
+  }
+
+  orderDomainValues(rid, domains, assignment, useHeuristics){
+    const values=domains[rid];
+    if(!useHeuristics) return [...values];
+    const unassigned=this.route_ids.filter(r=>!(r in assignment) && r!==rid);
+    const conflictsCaused=(value)=>{
+      let total=0;
+      for(const other of unassigned) for(const ov of domains[other])
+        if(!this.consistentPair(rid,value,other,ov)) total++;
+      return total;
+    };
+    return [...values].sort((a,b)=>conflictsCaused(a)-conflictsCaused(b));
+  }
+
+  forwardCheck(rid, value, domains, assignment){
+    const newDomains={}; for(const r in domains) newDomains[r]=[...domains[r]];
+    for(const other of this.route_ids){
+      if(other===rid || other in assignment) continue;
+      const pruned=newDomains[other].filter(ov=>this.consistentPair(rid,value,other,ov));
+      if(pruned.length===0) return null;
+      newDomains[other]=pruned;
+    }
+    return newDomains;
+  }
+
+  backtrackingSearch({useAc3=true, useFc=true, useHeuristics=true}={}){
+    this.nodes_expanded=0; this.backtracks=0;
+    let domains={}; for(const r in this.domains) domains[r]=[...this.domains[r]];
+    if(useAc3){ if(!this.ac3(domains)) return null; }
+
+    const backtrack=(assignment, domains)=>{
+      if(Object.keys(assignment).length===this.route_ids.length) return assignment;
+      const rid=this.selectUnassignedVariable(assignment, domains, useHeuristics);
+      for(const value of this.orderDomainValues(rid, domains, assignment, useHeuristics)){
+        this.nodes_expanded++;
+        if(this.isConsistent(assignment, rid, value)){
+          assignment[rid]=value;
+          let prunedDomains=domains;
+          if(useFc) prunedDomains=this.forwardCheck(rid,value,domains,assignment);
+          if(prunedDomains!==null){
+            const result=backtrack(assignment, prunedDomains);
+            if(result!==null) return result;
+          }
+          delete assignment[rid];
+        }
+      }
+      this.backtracks++;
+      return null;
+    };
+    return backtrack({}, domains);
+  }
+
+  routeHasConflict(assignment, rid){
+    for(const other in assignment){
+      if(other===rid) continue;
+      if(!this.consistentPair(rid,assignment[rid],other,assignment[other])) return true;
+    }
+    const partial={...assignment}; delete partial[rid];
+    return !this.driverHoursOk(partial, rid, assignment[rid]);
+  }
+
+  minConflicts(maxSteps=2000){
+    const assignment={};
+    for(const rid of this.route_ids){
+      if(this.domains[rid].length===0) return {assignment:null, steps:0};
+      assignment[rid]=this.domains[rid][Math.floor(Math.random()*this.domains[rid].length)];
+    }
+    for(let step=0; step<maxSteps; step++){
+      if(this.countViolations(assignment)===0) return {assignment, steps:step};
+      const conflicted=this.route_ids.filter(rid=>this.routeHasConflict(assignment,rid));
+      const rid=conflicted[Math.floor(Math.random()*conflicted.length)];
+      let bestValue=assignment[rid], bestScore=Infinity;
+      for(const value of this.domains[rid]){
+        const trial={...assignment, [rid]:value};
+        const score=this.countViolations(trial);
+        if(score<bestScore){ bestScore=score; bestValue=value; }
+      }
+      assignment[rid]=bestValue;
+    }
+    return {assignment: this.countViolations(assignment)===0 ? assignment : null, steps:maxSteps};
+  }
+}
+
+/* ============================================================
+   UI STATE + SAMPLE DATA  (ports main.py sample scenario)
+   ============================================================ */
+let vans=[], drivers=[], routes=[];
+
+function sample6(){
+  return {
+    vans:[
+      {id:'V1',capacity:12,fuel_range_km:180},
+      {id:'V2',capacity:8, fuel_range_km:120},
+      {id:'V3',capacity:15,fuel_range_km:250},
+    ],
+    drivers:[
+      {id:'D1',max_hours_per_day:8,available_from:420,available_to:1080},
+      {id:'D2',max_hours_per_day:6,available_from:480,available_to:960},
+      {id:'D3',max_hours_per_day:9,available_from:360,available_to:1140},
+    ],
+    routes:[
+      {id:'R1',passengers:10,distance_km:40,duration_min:60, window_start:420,window_end:600,time_step:15},
+      {id:'R2',passengers:6, distance_km:25,duration_min:45, window_start:480,window_end:660,time_step:15},
+      {id:'R3',passengers:13,distance_km:90,duration_min:90, window_start:420,window_end:780,time_step:15},
+      {id:'R4',passengers:8, distance_km:60,duration_min:75, window_start:540,window_end:900,time_step:15},
+      {id:'R5',passengers:5, distance_km:15,duration_min:30, window_start:600,window_end:900,time_step:15},
+      {id:'R6',passengers:11,distance_km:110,duration_min:100,window_start:600,window_end:1050,time_step:15},
+    ]
+  };
+}
+function sample12(){
+  const base=sample6();
+  const extra=[
+    {id:'R7', passengers:9, distance_km:70, duration_min:80, window_start:420,window_end:840,time_step:15},
+    {id:'R8', passengers:4, distance_km:20, duration_min:35, window_start:600,window_end:900,time_step:15},
+    {id:'R9', passengers:14,distance_km:130,duration_min:110,window_start:420,window_end:1080,time_step:15},
+    {id:'R10',passengers:7, distance_km:55, duration_min:65, window_start:540,window_end:840,time_step:15},
+    {id:'R11',passengers:12,distance_km:95, duration_min:95, window_start:480,window_end:960,time_step:15},
+    {id:'R12',passengers:6, distance_km:30, duration_min:40, window_start:660,window_end:1020,time_step:15},
+  ];
+  base.routes=base.routes.concat(extra);
+  return base;
+}
+
+function realLahoreFleet(){
+  // A realistic school/office van-pooling operation across Lahore.
+  // Distances/durations are rough real-world estimates between named areas.
+  return {
+    vans:[
+      {id:'HiAce-01', capacity:15, fuel_range_km:280},
+      {id:'HiAce-02', capacity:15, fuel_range_km:260},
+      {id:'Coaster-01',capacity:22, fuel_range_km:320},
+      {id:'Sonata-01', capacity:7,  fuel_range_km:180},
+      {id:'Sonata-02', capacity:7,  fuel_range_km:170},
+      {id:'Bolan-01',  capacity:9,  fuel_range_km:150},
+    ],
+    drivers:[
+      {id:'Imran',   max_hours_per_day:9, available_from:390, available_to:1140}, // 6:30am-7pm
+      {id:'Waseem',  max_hours_per_day:8, available_from:420, available_to:1080}, // 7am-6pm
+      {id:'Shahid',  max_hours_per_day:10,available_from:360, available_to:1200}, // 6am-8pm
+      {id:'Bilal',   max_hours_per_day:7, available_from:480, available_to:960},  // 8am-4pm
+      {id:'Nadeem',  max_hours_per_day:8, available_from:420, available_to:1050}, // 7am-5:30pm
+    ],
+    routes:[
+      // id, passengers, distance_km, duration_min, window_start, window_end
+      {id:'DHA-Phase6 -> LUMS',        passengers:12, distance_km:9,  duration_min:25, window_start:420, window_end:540, time_step:10},
+      {id:'Gulberg -> FCC',            passengers:8,  distance_km:6,  duration_min:20, window_start:420, window_end:540, time_step:10},
+      {id:'Model Town -> UMT',         passengers:14, distance_km:8,  duration_min:22, window_start:420, window_end:540, time_step:10},
+      {id:'Johar Town -> UCP',         passengers:10, distance_km:11, duration_min:30, window_start:420, window_end:540, time_step:10},
+      {id:'Bahria Town -> DHA Office', passengers:6,  distance_km:18, duration_min:40, window_start:450, window_end:600, time_step:10},
+      {id:'Askari-10 -> Cantt Office', passengers:9,  distance_km:7,  duration_min:20, window_start:450, window_end:600, time_step:10},
+      {id:'Wapda Town -> Model Town',  passengers:5,  distance_km:6,  duration_min:18, window_start:480, window_end:630, time_step:10},
+      {id:'Iqbal Town -> FC College',  passengers:11, distance_km:10, duration_min:28, window_start:480, window_end:630, time_step:10},
+      {id:'Valencia -> Thokar Office', passengers:7,  distance_km:9,  duration_min:24, window_start:480, window_end:660, time_step:10},
+      {id:'DHA Phase6 -> LUMS (PM)',   passengers:12, distance_km:9,  duration_min:25, window_start:900, window_end:1020,time_step:10},
+      {id:'FCC -> Gulberg (PM)',       passengers:8,  distance_km:6,  duration_min:20, window_start:900, window_end:1020,time_step:10},
+      {id:'UMT -> Model Town (PM)',    passengers:14, distance_km:8,  duration_min:22, window_start:930, window_end:1080,time_step:10},
+      {id:'UCP -> Johar Town (PM)',    passengers:10, distance_km:11, duration_min:30, window_start:930, window_end:1080,time_step:10},
+      {id:'Cantt -> Askari-10 (PM)',   passengers:9,  distance_km:7,  duration_min:20, window_start:960, window_end:1110,time_step:10},
+      {id:'Thokar -> Valencia (PM)',   passengers:7,  distance_km:9,  duration_min:24, window_start:960, window_end:1110,time_step:10},
+    ]
+  };
+}
+
+function loadSample(n){
+  const d=n===12?sample12():sample6();
+  vans=d.vans; drivers=d.drivers; routes=d.routes;
+  renderAll();
+  log(`Loaded ${n===12?'12-route stress':'6-route sample'} dataset (matches README figures).`);
+}
+
+function loadRealDataset(){
+  const d=realLahoreFleet();
+  vans=d.vans; drivers=d.drivers; routes=d.routes;
+  renderAll();
+  log(`Loaded real Lahore fleet dataset: ${vans.length} vans, ${drivers.length} drivers, ${routes.length} routes (AM + PM pickup/drop shifts across DHA, Gulberg, Model Town, Johar Town, Bahria Town, Iqbal Town, Valencia).`);
+}
+
+/* ---- table rendering / editing ---- */
+function renderAll(){ renderVans(); renderDrivers(); renderRoutes(); }
+
+function renderVans(){
+  const tb=document.querySelector('#vanTable tbody'); tb.innerHTML='';
+  vans.forEach((v,i)=>{
+    tb.innerHTML+=`<tr>
+      <td><input value="${v.id}" onchange="vans[${i}].id=this.value"></td>
+      <td><input type="number" value="${v.capacity}" onchange="vans[${i}].capacity=+this.value"></td>
+      <td><input type="number" value="${v.fuel_range_km}" onchange="vans[${i}].fuel_range_km=+this.value"></td>
+      <td><button class="rowbtn" onclick="vans.splice(${i},1);renderVans()">✕</button></td>
+    </tr>`;
+  });
+  document.getElementById('vanCount').textContent=vans.length;
+}
+function addVan(){ vans.push({id:'V'+(vans.length+1),capacity:10,fuel_range_km:150}); renderVans(); }
+
+function renderDrivers(){
+  const tb=document.querySelector('#drvTable tbody'); tb.innerHTML='';
+  drivers.forEach((d,i)=>{
+    tb.innerHTML+=`<tr>
+      <td><input value="${d.id}" onchange="drivers[${i}].id=this.value"></td>
+      <td><input type="number" value="${d.max_hours_per_day}" onchange="drivers[${i}].max_hours_per_day=+this.value"></td>
+      <td><input type="number" value="${d.available_from}" onchange="drivers[${i}].available_from=+this.value"></td>
+      <td><input type="number" value="${d.available_to}" onchange="drivers[${i}].available_to=+this.value"></td>
+      <td><button class="rowbtn" onclick="drivers.splice(${i},1);renderDrivers()">✕</button></td>
+    </tr>`;
+  });
+  document.getElementById('drvCount').textContent=drivers.length;
+}
+function addDriver(){ drivers.push({id:'D'+(drivers.length+1),max_hours_per_day:8,available_from:480,available_to:1020}); renderDrivers(); }
+
+function renderRoutes(){
+  const tb=document.querySelector('#rteTable tbody'); tb.innerHTML='';
+  routes.forEach((r,i)=>{
+    tb.innerHTML+=`<tr>
+      <td><input value="${r.id}" onchange="routes[${i}].id=this.value"></td>
+      <td><input type="number" value="${r.passengers}" onchange="routes[${i}].passengers=+this.value"></td>
+      <td><input type="number" value="${r.distance_km}" onchange="routes[${i}].distance_km=+this.value"></td>
+      <td><input type="number" value="${r.duration_min}" onchange="routes[${i}].duration_min=+this.value"></td>
+      <td><input type="number" value="${r.window_start}" onchange="routes[${i}].window_start=+this.value"></td>
+      <td><input type="number" value="${r.window_end}" onchange="routes[${i}].window_end=+this.value"></td>
+      <td><button class="rowbtn" onclick="routes.splice(${i},1);renderRoutes()">✕</button></td>
+    </tr>`;
+  });
+  document.getElementById('rteCount').textContent=routes.length;
+}
+function addRoute(){ routes.push({id:'R'+(routes.length+1),passengers:6,distance_km:30,duration_min:45,window_start:480,window_end:900,time_step:15}); renderRoutes(); }
+
+/* ---- log helper ---- */
+function log(msg){
+  const el=document.getElementById('log');
+  el.textContent = (el.textContent==='Load a dataset, then click Solve.' ? '' : el.textContent+'\n') + msg;
+  el.scrollTop=el.scrollHeight;
+}
+
+/* ---- output rendering ---- */
+function renderSchedule(assignment, csp){
+  const tb=document.querySelector('#outTable tbody'); tb.innerHTML='';
+  if(!assignment){ document.getElementById('summary').textContent='No solution found for this instance.'; return; }
+  const rids=Object.keys(assignment).sort();
+  let totalDist=0;
+  for(const rid of rids){
+    const [van,drv,start]=assignment[rid];
+    const route=csp.routes[rid];
+    totalDist+=route.distance_km;
+    tb.innerHTML+=`<tr class="schedule-row"><td>${rid}</td><td>${van}</td><td>${drv}</td><td>${hhmm(start)}</td><td>${hhmm(start+route.duration_min)}</td></tr>`;
+  }
+  const violations=csp.countViolations(assignment);
+  document.getElementById('summary').innerHTML =
+    `Total distance: <b>${totalDist} km</b> &nbsp;•&nbsp; Routes scheduled: <b>${rids.length}</b> &nbsp;•&nbsp; `+
+    `Constraint violations: <span class="badge ${violations===0?'ok':'viol'}">${violations}</span>`;
+}
+
+function statBox(label,value,bad=false){
+  return `<div class="stat ${bad?'bad':''}"><span class="n">${value}</span><span class="l">${label}</span></div>`;
+}
+
+/* ---- actions ---- */
+function buildCsp(){
+  if(vans.length===0||drivers.length===0||routes.length===0){
+    log('Add at least one van, driver, and route (or load a sample) before solving.');
+    return null;
+  }
+  return new SchedulingCSP(vans,drivers,routes);
+}
+
+function runSolve(){
+  const csp=buildCsp(); if(!csp) return;
+  const opts={
+    useAc3: document.getElementById('optAC3').checked,
+    useFc: document.getElementById('optFC').checked,
+    useHeuristics: document.getElementById('optHeur').checked,
+  };
+  const t0=performance.now();
+  const result=csp.backtrackingSearch(opts);
+  const ms=(performance.now()-t0).toFixed(2);
+  document.getElementById('stats').innerHTML =
+    statBox('Nodes expanded', csp.nodes_expanded) +
+    statBox('Backtracks', csp.backtracks, csp.backtracks>0) +
+    statBox('Time (ms)', ms);
+  renderSchedule(result, csp);
+  log(`Backtracking search [AC3:${opts.useAc3} FC:${opts.useFc} Heuristics:${opts.useHeuristics}] -> `+
+      `${result?'solution found':'NO SOLUTION'}, nodes=${csp.nodes_expanded}, backtracks=${csp.backtracks}, ${ms}ms`);
+}
+
+function runCompare(){
+  const csp1=buildCsp(); if(!csp1) return;
+  const csp2=buildCsp();
+
+  const r1=csp1.backtrackingSearch({useAc3:true,useFc:true,useHeuristics:true});
+  const r2=csp2.backtrackingSearch({useAc3:false,useFc:false,useHeuristics:false});
+
+  document.getElementById('stats').innerHTML =
+    `<div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div><div class="footnote" style="margin-bottom:4px;">AC-3 + MRV/Degree + LCV + Forward Checking</div>
+        ${statBox('Nodes', csp1.nodes_expanded)}${statBox('Backtracks', csp1.backtracks, csp1.backtracks>0)}</div>
+      <div><div class="footnote" style="margin-bottom:4px;">Plain backtracking (no heuristics)</div>
+        ${statBox('Nodes', csp2.nodes_expanded)}${statBox('Backtracks', csp2.backtracks, csp2.backtracks>0)}</div>
+    </div>`;
+  renderSchedule(r1, csp1);
+  const ratio = csp2.nodes_expanded>0 ? (csp2.nodes_expanded/Math.max(csp1.nodes_expanded,1)).toFixed(1) : '—';
+  log(`Comparison — heuristic version: ${csp1.nodes_expanded} nodes / ${csp1.backtracks} backtracks. `+
+      `Plain version: ${csp2.nodes_expanded} nodes / ${csp2.backtracks} backtracks. `+
+      `Reduction: ~${ratio}x fewer nodes.`);
+}
+
+function runMinConflicts(){
+  const csp=buildCsp(); if(!csp) return;
+  const t0=performance.now();
+  const {assignment, steps} = csp.minConflicts(2000);
+  const ms=(performance.now()-t0).toFixed(2);
+  document.getElementById('stats').innerHTML =
+    statBox('Steps taken', steps) +
+    statBox('Result', assignment ? '0 violations' : 'no convergence', !assignment) +
+    statBox('Time (ms)', ms);
+  renderSchedule(assignment, csp);
+  log(`Min-conflicts local search -> ${assignment?'converged':'FAILED to converge'} in ${steps} steps, ${ms}ms.`);
+}
+
+/* init */
+loadRealDataset();
+</script>
+</body>
+</html>
